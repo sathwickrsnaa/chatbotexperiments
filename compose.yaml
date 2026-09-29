@@ -1,0 +1,74 @@
+services:
+  init-data:
+    build: .
+    command: ["python", "-m", "transaction_chat.data"]
+    environment:
+      DATA_DIR: /data
+      DATA_ANCHOR: ${DATA_ANCHOR:-2025-03-31T12:00:00}
+      DATA_SEED: ${DATA_SEED:-42}
+      NUM_RECORDS: ${NUM_RECORDS:-5000}
+    volumes:
+      - transactions:/data
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.runner
+    environment:
+      DATA_DIR: /data
+    depends_on:
+      init-data:
+        condition: service_completed_successfully
+    volumes:
+      - transactions:/data:ro
+    networks: [analysis]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 64
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  app:
+    build: .
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      DATA_DIR: /data
+      RUNNER_URL: http://runner:8000
+    depends_on:
+      runner:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - transactions:/data:ro
+    networks: [default, analysis]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  transactions:
+
+networks:
+  analysis:
+    internal: true

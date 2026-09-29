@@ -1,0 +1,9 @@
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+    OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MPLCONFIGDIR=/tmp/matplotlib
+WORKDIR /app
+COPY requirements-runner.txt constraints.txt ./
+RUN pip install -c constraints.txt -r requirements-runner.txt && useradd --uid 10001 --create-home runner
+COPY --chown=runner:runner transaction_chat ./transaction_chat
+USER runner
+CMD ["uvicorn", "transaction_chat.runner:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
